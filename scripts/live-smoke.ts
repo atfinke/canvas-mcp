@@ -171,8 +171,19 @@ if (primaryCourse) {
     const course = await client.getCourse(primaryCourse!.id);
     return { courseId: course.id, courseName: course.name };
   });
+
+  await step("getHomeContent", async () => {
+    const home = await client.getHomeContent(primaryCourse!.id);
+    return {
+      courseId: home.course.id,
+      courseName: home.course.name,
+      defaultView: home.defaultView,
+      resolvedAs: home.resolvedAs,
+    };
+  });
 } else {
   skip("getCourse", "No active course available");
+  skip("getHomeContent", "No active course available");
 }
 
 await step("listEnrollments", async () => {

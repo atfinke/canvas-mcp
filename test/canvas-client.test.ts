@@ -68,6 +68,7 @@ test("getCourse requests syllabus_body and returns it when available", async () 
       return jsonResponse({
         id: "251315",
         name: "DSGN 465",
+        default_view: "syllabus",
         syllabus_body: "<p>Baiju Shah</p>",
       });
     },
@@ -77,6 +78,7 @@ test("getCourse requests syllabus_body and returns it when available", async () 
 
   assert.equal(requests.length, 1);
   assert.match(requests[0]?.url ?? "", /include%5B%5D=syllabus_body/u);
+  assert.equal(course.default_view, "syllabus");
   assert.equal(course.syllabus_body, "<p>Baiju Shah</p>");
 });
 
@@ -100,6 +102,92 @@ test("getSyllabus returns the syllabus html field", async () => {
   assert.equal(requests.length, 1);
   assert.match(requests[0] ?? "", /\/courses\/251315\?include%5B%5D=syllabus_body$/u);
   assert.equal(syllabusBody, "<p>Teaching team: Baiju Shah</p>");
+});
+
+test("getPage uses the dedicated front_page endpoint when requested", async () => {
+  const requests: string[] = [];
+  const client = new CanvasClient(config, {
+    fetch: async (input) => {
+      const url = String(input);
+      requests.push(url);
+
+      return jsonResponse({
+        page_id: "42",
+        title: "Home page",
+        url: "home-page",
+        front_page: true,
+      });
+    },
+  });
+
+  const page = await client.getPage("235515", "front_page");
+
+  assert.equal(requests.length, 1);
+  assert.match(requests[0] ?? "", /\/courses\/235515\/front_page$/u);
+  assert.equal(page.front_page, true);
+  assert.equal(page.title, "Home page");
+});
+
+test("getHomeContent resolves syllabus-backed home views from the course payload", async () => {
+  const requests: string[] = [];
+  const client = new CanvasClient(config, {
+    fetch: async (input) => {
+      const url = String(input);
+      requests.push(url);
+
+      return jsonResponse({
+        id: "251315",
+        name: "DSGN 465",
+        default_view: "syllabus",
+        syllabus_body: "<p>Baiju Shah</p>",
+      });
+    },
+  });
+
+  const home = await client.getHomeContent("251315");
+
+  assert.equal(requests.length, 1);
+  assert.equal(home.defaultView, "syllabus");
+  assert.equal(home.resolvedAs, "syllabus");
+  assert.equal(home.syllabusBody, "<p>Baiju Shah</p>");
+  assert.equal(home.page, null);
+});
+
+test("getHomeContent resolves wiki-backed home views through the front page endpoint", async () => {
+  const requests: string[] = [];
+  const client = new CanvasClient(config, {
+    fetch: async (input) => {
+      const url = String(input);
+      requests.push(url);
+
+      if (url.includes("/front_page")) {
+        return jsonResponse({
+          page_id: "99",
+          title: "Home page",
+          url: "home-page",
+          front_page: true,
+          body: "<p>Welcome</p>",
+        });
+      }
+
+      return jsonResponse({
+        id: "235515",
+        name: "Venture Lab",
+        default_view: "wiki",
+      });
+    },
+  });
+
+  const home = await client.getHomeContent("235515");
+
+  assert.equal(requests.length, 2);
+  assert.match(requests[0] ?? "", /\/courses\/235515\?/u);
+  assert.match(requests[1] ?? "", /\/courses\/235515\/front_page$/u);
+  assert.equal(home.defaultView, "wiki");
+  assert.equal(home.resolvedAs, "front_page");
+  assert.equal(home.page?.front_page, true);
+  assert.equal(home.page?.title, "Home page");
+  assert.equal(home.syllabusBody, null);
 });
 
 test("listAnnouncements returns an empty result when there are no active courses", async () => {

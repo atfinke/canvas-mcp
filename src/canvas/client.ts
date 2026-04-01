@@ -79,6 +79,32 @@ export interface DownloadedCanvasFile {
   sourceUrl: string;
 }
 
+export type CanvasHomeContent =
+  | {
+      course: CanvasCourse;
+      defaultView: string | null;
+      resolvedAs: "syllabus";
+      syllabusBody: string | null;
+      page: null;
+      note?: undefined;
+    }
+  | {
+      course: CanvasCourse;
+      defaultView: string | null;
+      resolvedAs: "front_page";
+      syllabusBody: null;
+      page: CanvasPage;
+      note?: undefined;
+    }
+  | {
+      course: CanvasCourse;
+      defaultView: string | null;
+      resolvedAs: null;
+      syllabusBody: null;
+      page: null;
+      note: string;
+    };
+
 const DEFAULT_MAX_DOWNLOAD_BYTES = 10_000_000;
 
 export class CanvasClient {
@@ -123,6 +149,43 @@ export class CanvasClient {
   async getSyllabus(courseId: string): Promise<string | null> {
     const course = await this.getCourseWithIncludes(courseId, ["syllabus_body"]);
     return course.syllabus_body ?? null;
+  }
+
+  async getHomeContent(courseId: string): Promise<CanvasHomeContent> {
+    const course = await this.getCourse(courseId);
+    const defaultView = course.default_view ?? null;
+
+    if (defaultView === "syllabus") {
+      return {
+        course,
+        defaultView,
+        resolvedAs: "syllabus",
+        syllabusBody: course.syllabus_body ?? null,
+        page: null,
+      };
+    }
+
+    if (defaultView === "wiki") {
+      const page = await this.getFrontPage(courseId);
+
+      return {
+        course,
+        defaultView,
+        resolvedAs: "front_page",
+        syllabusBody: null,
+        page,
+      };
+    }
+
+    return {
+      course,
+      defaultView,
+      resolvedAs: null,
+      syllabusBody: null,
+      page: null,
+      note:
+        "Canvas home is configured to a non-document view. Use the course's default_view to decide whether to inspect modules, assignments, or activity instead.",
+    };
   }
 
   async listEnrollments(input: {
@@ -294,7 +357,15 @@ export class CanvasClient {
     );
   }
 
+  async getFrontPage(courseId: string): Promise<CanvasPage> {
+    return this.requestJson(`/courses/${encodeURIComponent(courseId)}/front_page`, CanvasPageSchema);
+  }
+
   async getPage(courseId: string, pageIdOrUrl: string): Promise<CanvasPage> {
+    if (pageIdOrUrl === "front_page") {
+      return this.getFrontPage(courseId);
+    }
+
     return this.requestJson(
       `/courses/${encodeURIComponent(courseId)}/pages/${encodeURIComponent(pageIdOrUrl)}`,
       CanvasPageSchema,

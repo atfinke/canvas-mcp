@@ -59,6 +59,7 @@ export const CanvasCourseSchema = z.object({
   name: z.string(),
   course_code: z.string().optional(),
   workflow_state: z.string().optional(),
+  default_view: z.string().optional(),
   start_at: OptionalDateSchema,
   end_at: OptionalDateSchema,
   syllabus_body: z.string().nullable().optional(),

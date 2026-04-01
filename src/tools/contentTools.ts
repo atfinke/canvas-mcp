@@ -76,13 +76,30 @@ export function registerContentTools(server: McpServer, client: CanvasClient): v
   registerJsonTool(
     server,
     "get_page",
-    "Return a course page by page ID or URL slug.",
+    "Return a course wiki page by page ID or URL slug. Use `front_page` to resolve the course wiki front page through Canvas's dedicated endpoint.",
     {
       courseId: identifierParam,
       pageIdOrUrl: z.string().min(1),
     },
     async ({ courseId, pageIdOrUrl }) => {
       const page = await client.getPage(courseId, pageIdOrUrl);
+
+      return {
+        courseId,
+        page,
+      };
+    },
+  );
+
+  registerJsonTool(
+    server,
+    "get_front_page",
+    "Return the Canvas wiki front page for a course, if one is set.",
+    {
+      courseId: identifierParam,
+    },
+    async ({ courseId }) => {
+      const page = await client.getFrontPage(courseId);
 
       return {
         courseId,
@@ -104,6 +121,23 @@ export function registerContentTools(server: McpServer, client: CanvasClient): v
       return {
         courseId,
         syllabusBody,
+      };
+    },
+  );
+
+  registerJsonTool(
+    server,
+    "get_home_content",
+    "Return the effective Canvas Home tab content for a course based on its default view.",
+    {
+      courseId: identifierParam,
+    },
+    async ({ courseId }) => {
+      const home = await client.getHomeContent(courseId);
+
+      return {
+        courseId,
+        ...home,
       };
     },
   );
