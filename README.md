@@ -37,6 +37,7 @@ Read-only student-facing tools across identity, planning, coursework, content, p
 - `get_module_items`
 - `list_pages`
 - `get_page`
+- `get_syllabus`
 - `list_files`
 - `get_file`
 - `download_file`
@@ -154,6 +155,7 @@ To publish version `0.1.0`, create and push tag `v0.1.0`.
 - `CANVAS_DOMAIN` should be just the host, not `https://` and not `/api/v1`.
 - The server does a startup auth check against `GET /api/v1/users/self?include[]=uuid`.
 - The client uses a request timeout and normalizes a few Canvas-specific edge cases such as disabled course features and explicit empty filters.
+- `get_course` requests `include[]=syllabus_body`, so course responses include `syllabus_body` when the Canvas course has syllabus content.
 - `download_file` saves the file to a local temporary directory and returns the absolute path, checksum, and metadata.
 - `read_text_file` supports text-like formats plus PDFs. Other binary formats continue to work through `get_file` and `download_file`.
 - `manifest.json` defines the MCPB install flow and prompts users for `CANVAS_DOMAIN` and `CANVAS_API_TOKEN` during desktop extension setup.

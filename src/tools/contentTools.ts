@@ -93,6 +93,23 @@ export function registerContentTools(server: McpServer, client: CanvasClient): v
 
   registerJsonTool(
     server,
+    "get_syllabus",
+    "Return the syllabus HTML for a course when Canvas exposes it on the course record.",
+    {
+      courseId: identifierParam,
+    },
+    async ({ courseId }) => {
+      const syllabusBody = await client.getSyllabus(courseId);
+
+      return {
+        courseId,
+        syllabusBody,
+      };
+    },
+  );
+
+  registerJsonTool(
+    server,
     "list_files",
     "List files in a course.",
     {

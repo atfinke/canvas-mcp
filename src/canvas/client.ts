@@ -109,12 +109,20 @@ export class CanvasClient {
   }
 
   async getCourse(courseId: string): Promise<CanvasCourse> {
-    return this.requestJson(
-      buildCanvasPath(`/courses/${encodeURIComponent(courseId)}`, {
-        "include[]": ["term", "permissions", "sections", "tabs", "total_scores", "current_grading_period_scores"],
-      }),
-      CanvasCourseSchema,
-    );
+    return this.getCourseWithIncludes(courseId, [
+      "term",
+      "permissions",
+      "sections",
+      "tabs",
+      "total_scores",
+      "current_grading_period_scores",
+      "syllabus_body",
+    ]);
+  }
+
+  async getSyllabus(courseId: string): Promise<string | null> {
+    const course = await this.getCourseWithIncludes(courseId, ["syllabus_body"]);
+    return course.syllabus_body ?? null;
   }
 
   async listEnrollments(input: {
@@ -495,6 +503,15 @@ export class CanvasClient {
         ...(include.length > 0 ? { "include[]": include } : {}),
       }),
       CanvasMissingSubmissionSchema,
+    );
+  }
+
+  private async getCourseWithIncludes(courseId: string, include: string[]): Promise<CanvasCourse> {
+    return this.requestJson(
+      buildCanvasPath(`/courses/${encodeURIComponent(courseId)}`, {
+        "include[]": include,
+      }),
+      CanvasCourseSchema,
     );
   }
 

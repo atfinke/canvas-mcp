@@ -58,6 +58,50 @@ test("listCourses follows Canvas pagination links", async () => {
   );
 });
 
+test("getCourse requests syllabus_body and returns it when available", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new CanvasClient(config, {
+    fetch: async (input, init) => {
+      const url = String(input);
+      requests.push({ url, init });
+
+      return jsonResponse({
+        id: "251315",
+        name: "DSGN 465",
+        syllabus_body: "<p>Baiju Shah</p>",
+      });
+    },
+  });
+
+  const course = await client.getCourse("251315");
+
+  assert.equal(requests.length, 1);
+  assert.match(requests[0]?.url ?? "", /include%5B%5D=syllabus_body/u);
+  assert.equal(course.syllabus_body, "<p>Baiju Shah</p>");
+});
+
+test("getSyllabus returns the syllabus html field", async () => {
+  const requests: string[] = [];
+  const client = new CanvasClient(config, {
+    fetch: async (input) => {
+      const url = String(input);
+      requests.push(url);
+
+      return jsonResponse({
+        id: "251315",
+        name: "DSGN 465",
+        syllabus_body: "<p>Teaching team: Baiju Shah</p>",
+      });
+    },
+  });
+
+  const syllabusBody = await client.getSyllabus("251315");
+
+  assert.equal(requests.length, 1);
+  assert.match(requests[0] ?? "", /\/courses\/251315\?include%5B%5D=syllabus_body$/u);
+  assert.equal(syllabusBody, "<p>Teaching team: Baiju Shah</p>");
+});
+
 test("listAnnouncements returns an empty result when there are no active courses", async () => {
   let requestCount = 0;
   const client = new CanvasClient(config, {
