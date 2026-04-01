@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PACKAGE_VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
+          if [ "${GITHUB_REF_NAME}" != "v${PACKAGE_VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version v${PACKAGE_VERSION}"
+            exit 1
+          fi
+
+      - name: Verify
+        run: npm run verify
+
+      - name: Build MCP bundle
+        run: npm run mcpb:pack
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: canvas-mcpb-release
+          path: releases/*.mcpb
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: releases/*.mcpb
+          generate_release_notes: true

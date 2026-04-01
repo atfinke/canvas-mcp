@@ -1,0 +1,35 @@
+{
+  "name": "canvas-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Canvas MCP server for validating Canvas credentials and core read-only workflows.",
+  "scripts": {
+    "build": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.typecheck.json",
+    "dev": "tsx src/index.ts",
+    "mcpb:pack": "node --import tsx scripts/pack-mcpb.ts",
+    "mcpb:validate": "npx mcpb validate manifest.json",
+    "start": "node dist/index.js",
+    "test": "node --import tsx --test test/*.test.ts",
+    "test:live": "node --import tsx scripts/live-smoke.ts",
+    "test:live:mcp-files": "node --import tsx scripts/live-mcp-file-tools.ts",
+    "report:classes": "node --import tsx scripts/report-upcoming-class-times.ts",
+    "verify": "npm run check && npm run test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "dotenv": "17.3.1",
+    "pdf-parse": "^2.4.5",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@types/node": "25.5.0",
+    "tsx": "4.21.0",
+    "typescript": "6.0.2"
+  }
+}

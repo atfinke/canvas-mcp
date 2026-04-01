@@ -1,0 +1,59 @@
+{
+  "manifest_version": "0.3",
+  "name": "canvas-mcp",
+  "display_name": "Canvas MCP",
+  "version": "0.1.0",
+  "description": "Read-only Canvas MCP server for courses, assignments, planning, content, and collaboration workflows.",
+  "long_description": "Canvas MCP is a local-first Model Context Protocol server for Canvas. It connects to a user-provided Canvas domain and bearer token, then exposes read-only student-focused tools for courses, assignments, planner items, announcements, modules, files, discussions, quizzes, groups, conversations, and schedules.",
+  "author": {
+    "name": "Andrew Finke"
+  },
+  "license": "MIT",
+  "keywords": [
+    "canvas",
+    "instructure",
+    "education",
+    "mcp",
+    "claude-desktop"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "CANVAS_DOMAIN": "${user_config.canvas_domain}",
+        "CANVAS_API_TOKEN": "${user_config.canvas_api_token}"
+      }
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20"
+    }
+  },
+  "tools_generated": true,
+  "user_config": {
+    "canvas_domain": {
+      "type": "string",
+      "title": "Canvas domain",
+      "description": "Canvas host name, for example canvas.northwestern.edu.",
+      "required": true
+    },
+    "canvas_api_token": {
+      "type": "string",
+      "title": "Canvas API token",
+      "description": "Canvas bearer token used for API requests.",
+      "required": true,
+      "sensitive": true
+    }
+  }
+}
