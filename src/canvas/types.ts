@@ -56,7 +56,7 @@ export type CanvasEnrollment = z.infer<typeof CanvasEnrollmentSchema>;
 
 export const CanvasCourseSchema = z.object({
   id: CanvasIdSchema,
-  name: z.string(),
+  name: z.string().optional(),
   course_code: z.string().optional(),
   workflow_state: z.string().optional(),
   default_view: z.string().optional(),
@@ -133,7 +133,7 @@ export type CanvasSubmission = z.infer<typeof CanvasSubmissionSchema>;
 
 export const CanvasAssignmentSchema = z.object({
   id: CanvasIdSchema,
-  name: z.string(),
+  name: z.string().optional(),
   description: z.string().nullable().optional(),
   due_at: OptionalDateSchema,
   unlock_at: OptionalDateSchema,
