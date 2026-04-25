@@ -13,6 +13,7 @@ import {
   CanvasEnrollmentSchema,
   CanvasExternalToolSchema,
   CanvasFileSchema,
+  CanvasFileUploadTargetSchema,
   CanvasGroupSchema,
   CanvasMissingSubmissionSchema,
   CanvasModuleItemSchema,
@@ -35,6 +36,7 @@ import {
   type CanvasEnrollment,
   type CanvasExternalTool,
   type CanvasFile,
+  type CanvasFileUploadTarget,
   type CanvasGroup,
   type CanvasMissingSubmission,
   type CanvasModule,
@@ -77,6 +79,21 @@ export interface DownloadedCanvasFile {
   size: number;
   contentType: string | null;
   sourceUrl: string;
+}
+
+export interface SubmitAssignmentFileInput {
+  courseId: string;
+  assignmentId: string;
+  fileName: string;
+  bytes: Uint8Array;
+  contentType?: string | null;
+  comment?: string;
+}
+
+export interface SubmittedAssignmentFile {
+  assignment: CanvasAssignment;
+  file: CanvasFile;
+  submission: CanvasSubmission;
 }
 
 export type CanvasHomeContent =
@@ -327,6 +344,29 @@ export class CanvasClient {
       ),
       CanvasSubmissionSchema,
     );
+  }
+
+  async submitAssignmentFile(input: SubmitAssignmentFileInput): Promise<SubmittedAssignmentFile> {
+    const assignment = await this.getAssignment(input.courseId, input.assignmentId);
+
+    if (!assignment.submission_types?.includes("online_upload")) {
+      const assignmentLabel = assignment.name ? `${assignment.name} (${assignment.id})` : assignment.id;
+      throw new Error(`Canvas assignment ${assignmentLabel} does not accept online_upload submissions`);
+    }
+
+    const file = await this.uploadAssignmentSubmissionFile(input);
+    const submission = await this.submitUploadedAssignmentFiles({
+      courseId: input.courseId,
+      assignmentId: input.assignmentId,
+      fileIds: [file.id],
+      comment: input.comment,
+    });
+
+    return {
+      assignment,
+      file,
+      submission,
+    };
   }
 
   async listModules(courseId: string): Promise<CanvasModule[]> {
@@ -600,6 +640,25 @@ export class CanvasClient {
     return schema.parse(payload);
   }
 
+  private async requestFormJson<TSchema extends z.ZodTypeAny>(
+    pathOrUrl: string,
+    fields: Record<string, string | number | boolean | Array<string | number | boolean> | null | undefined>,
+    schema: TSchema,
+  ): Promise<z.infer<TSchema>> {
+    const response = await this.sendRequest(pathOrUrl, {
+      method: "POST",
+      contentType: "application/x-www-form-urlencoded",
+      body: buildFormBody(fields),
+    });
+
+    if (!response.ok) {
+      throw await this.toApiError(response);
+    }
+
+    const payload = (await response.json()) as unknown;
+    return schema.parse(payload);
+  }
+
   private async requestAllPages<TSchema extends z.ZodTypeAny>(
     pathOrUrl: string,
     itemSchema: TSchema,
@@ -638,18 +697,30 @@ export class CanvasClient {
     }
   }
 
-  private requestHeaders(accept = "application/json+canvas-string-ids"): Record<string, string> {
-    return {
+  private requestHeaders(
+    accept = "application/json+canvas-string-ids",
+    contentType?: string,
+  ): Record<string, string> {
+    const headers: Record<string, string> = {
       Accept: accept,
       Authorization: `Bearer ${this.config.apiToken}`,
       "User-Agent": USER_AGENT,
     };
+
+    if (contentType) {
+      headers["Content-Type"] = contentType;
+    }
+
+    return headers;
   }
 
   private async sendRequest(
     pathOrUrl: string,
     options: {
       accept?: string;
+      body?: URLSearchParams;
+      contentType?: string;
+      method?: string;
     } = {},
   ): Promise<Response> {
     const controller = new AbortController();
@@ -657,8 +728,9 @@ export class CanvasClient {
 
     try {
       return await this.fetchImpl(toCanvasUrl(this.config.baseUrl, pathOrUrl), {
-        method: "GET",
-        headers: this.requestHeaders(options.accept),
+        method: options.method ?? "GET",
+        headers: this.requestHeaders(options.accept, options.contentType),
+        body: options.body,
         signal: controller.signal,
       });
     } catch (error) {
@@ -670,6 +742,102 @@ export class CanvasClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async sendUnauthenticatedRequest(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    try {
+      return await this.fetchImpl(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Canvas upload request timed out after ${this.requestTimeoutMs}ms`);
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async uploadAssignmentSubmissionFile(input: SubmitAssignmentFileInput): Promise<CanvasFile> {
+    const uploadTarget = await this.requestFormJson(
+      `/courses/${encodeURIComponent(input.courseId)}/assignments/${encodeURIComponent(input.assignmentId)}/submissions/self/files`,
+      {
+        name: input.fileName,
+        size: input.bytes.byteLength,
+        content_type: input.contentType,
+      },
+      CanvasFileUploadTargetSchema,
+    );
+    const uploadResponse = await this.postFileToUploadTarget(uploadTarget, input);
+    const successLocation = uploadResponse.headers.get("location");
+
+    if (!successLocation) {
+      throw new Error("Canvas file upload did not return a success location");
+    }
+
+    const confirmResponse = await this.sendRequest(successLocation);
+
+    if (!confirmResponse.ok) {
+      throw await this.toApiError(confirmResponse);
+    }
+
+    const payload = (await confirmResponse.json()) as unknown;
+    return CanvasFileSchema.parse(payload);
+  }
+
+  private async postFileToUploadTarget(
+    uploadTarget: CanvasFileUploadTarget,
+    input: SubmitAssignmentFileInput,
+  ): Promise<Response> {
+    const body = new FormData();
+
+    for (const [key, value] of Object.entries(uploadTarget.upload_params)) {
+      body.append(key, String(value));
+    }
+
+    const uploadBytes = new Uint8Array(input.bytes.byteLength);
+    uploadBytes.set(input.bytes);
+
+    body.append(
+      "file",
+      new Blob([uploadBytes], { type: input.contentType ?? "application/octet-stream" }),
+      input.fileName,
+    );
+
+    const response = await this.sendUnauthenticatedRequest(uploadTarget.upload_url, {
+      method: "POST",
+      body,
+      redirect: "manual",
+    });
+
+    if (response.status < 200 || response.status >= 400) {
+      throw new Error(`Canvas file upload failed with ${response.status} ${response.statusText}`);
+    }
+
+    return response;
+  }
+
+  private async submitUploadedAssignmentFiles(input: {
+    courseId: string;
+    assignmentId: string;
+    fileIds: string[];
+    comment?: string;
+  }): Promise<CanvasSubmission> {
+    return this.requestFormJson(
+      `/courses/${encodeURIComponent(input.courseId)}/assignments/${encodeURIComponent(input.assignmentId)}/submissions`,
+      {
+        "submission[submission_type]": "online_upload",
+        "submission[file_ids][]": input.fileIds,
+        "comment[text_comment]": input.comment,
+      },
+      CanvasSubmissionSchema,
+    );
   }
 
   private async readResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
@@ -739,4 +907,27 @@ export class CanvasClient {
       trimmedBody,
     );
   }
+}
+
+function buildFormBody(
+  fields: Record<string, string | number | boolean | Array<string | number | boolean> | null | undefined>,
+): URLSearchParams {
+  const body = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        body.append(key, String(entry));
+      }
+      continue;
+    }
+
+    body.append(key, String(value));
+  }
+
+  return body;
 }

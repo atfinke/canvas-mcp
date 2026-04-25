@@ -315,6 +315,13 @@ export const CanvasFileSchema = z.object({
 
 export type CanvasFile = z.infer<typeof CanvasFileSchema>;
 
+export const CanvasFileUploadTargetSchema = z.object({
+  upload_url: z.string(),
+  upload_params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
+});
+
+export type CanvasFileUploadTarget = z.infer<typeof CanvasFileUploadTargetSchema>;
+
 export const CanvasTabSchema = z.object({
   id: z.string(),
   label: z.string().optional(),

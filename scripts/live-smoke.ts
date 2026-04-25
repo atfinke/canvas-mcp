@@ -156,7 +156,10 @@ await step("getSelf", async () => {
 
 await step("listCourses(active)", async () => {
   const courses = await client.listCourses("active");
-  activeCourses = courses.map((course) => ({ id: course.id, name: course.name }));
+  activeCourses = courses.map((course) => ({
+    id: course.id,
+    name: course.name ?? course.course_code ?? `Course ${course.id}`,
+  }));
   primaryCourse = selectPrimaryCourse(activeCourses);
 
   return {

@@ -1,6 +1,6 @@
 # Canvas MCP
 
-Minimal TypeScript MCP server for validating a Canvas token and proving out a small read-only Canvas tool surface.
+Minimal TypeScript MCP server for validating a Canvas token and proving out a small Canvas tool surface.
 
 ## Attribution
 
@@ -8,7 +8,7 @@ This project was built entirely by OpenAI GPT-5.4 via Codex.
 
 ## Current Scope
 
-Read-only student-facing tools across identity, planning, coursework, content, progress, and collaboration.
+Mostly read-only student-facing tools across identity, planning, coursework, content, progress, and collaboration, plus one explicitly confirmed local-file assignment submission action.
 
 ### Identity
 
@@ -30,6 +30,7 @@ Read-only student-facing tools across identity, planning, coursework, content, p
 - `get_assignment`
 - `list_submissions`
 - `get_submission`
+- `submit_assignment_file`
 
 ### Content
 
@@ -125,6 +126,14 @@ Read-only student-facing tools across identity, planning, coursework, content, p
    npm run test:live:mcp-files
    ```
 
+8. Run a one-off live local-file assignment submission test:
+
+   ```bash
+   npm run test:live:submit-file -- <course-id> <assignment-id>
+   ```
+
+   Passing a third argument submits that local file path instead of creating a timestamped text file. This command is intentionally not part of `npm run verify`.
+
 ## MCP Bundles
 
 The canonical developer path for this project remains local stdio, but the repo also supports MCP Bundle packaging for one-click installation in Claude Desktop and other MCPB-capable desktop clients.
@@ -161,6 +170,7 @@ To publish version `0.1.0`, create and push tag `v0.1.0`.
 - `get_front_page` uses Canvas's dedicated `/courses/:id/front_page` endpoint. `get_home_content` mirrors the course Home tab by using `default_view` to resolve either the wiki front page or the syllabus body.
 - `download_file` saves the file to a local temporary directory and returns the absolute path, checksum, and metadata.
 - `read_text_file` supports text-like formats plus PDFs. Other binary formats continue to work through `get_file` and `download_file`.
+- `submit_assignment_file` uploads and submits one local file to assignments that accept `online_upload`; it requires `confirmSubmission=true`.
 - `manifest.json` defines the MCPB install flow and prompts users for `CANVAS_DOMAIN` and `CANVAS_API_TOKEN` during desktop extension setup.
 - Some Canvas course features are optional. For list-style tools such as pages, discussions, and quizzes, disabled course features are normalized to empty lists instead of hard failures.
 - `npm run test:live` probes across active courses so course-specific permissions or disabled features do not create false negatives for unrelated endpoints. `CANVAS_SMOKE_PRIMARY_COURSE_ID` lets you pin the primary course used for the course-scoped checks.

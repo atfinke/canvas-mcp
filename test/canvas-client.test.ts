@@ -66,7 +66,7 @@ test("getCourse requests syllabus_body and returns it when available", async () 
       requests.push({ url, init });
 
       return jsonResponse({
-        id: "251315",
+        id: "course-123",
         name: "DSGN 465",
         default_view: "syllabus",
         syllabus_body: "<p>Baiju Shah</p>",
@@ -74,7 +74,7 @@ test("getCourse requests syllabus_body and returns it when available", async () 
     },
   });
 
-  const course = await client.getCourse("251315");
+  const course = await client.getCourse("course-123");
 
   assert.equal(requests.length, 1);
   assert.match(requests[0]?.url ?? "", /include%5B%5D=syllabus_body/u);
@@ -90,17 +90,17 @@ test("getSyllabus returns the syllabus html field", async () => {
       requests.push(url);
 
       return jsonResponse({
-        id: "251315",
+        id: "course-123",
         name: "DSGN 465",
         syllabus_body: "<p>Teaching team: Baiju Shah</p>",
       });
     },
   });
 
-  const syllabusBody = await client.getSyllabus("251315");
+  const syllabusBody = await client.getSyllabus("course-123");
 
   assert.equal(requests.length, 1);
-  assert.match(requests[0] ?? "", /\/courses\/251315\?include%5B%5D=syllabus_body$/u);
+  assert.match(requests[0] ?? "", /\/courses\/course-123\?include%5B%5D=syllabus_body$/u);
   assert.equal(syllabusBody, "<p>Teaching team: Baiju Shah</p>");
 });
 
@@ -136,7 +136,7 @@ test("getHomeContent resolves syllabus-backed home views from the course payload
       requests.push(url);
 
       return jsonResponse({
-        id: "251315",
+        id: "course-123",
         name: "DSGN 465",
         default_view: "syllabus",
         syllabus_body: "<p>Baiju Shah</p>",
@@ -144,7 +144,7 @@ test("getHomeContent resolves syllabus-backed home views from the course payload
     },
   });
 
-  const home = await client.getHomeContent("251315");
+  const home = await client.getHomeContent("course-123");
 
   assert.equal(requests.length, 1);
   assert.equal(home.defaultView, "syllabus");
@@ -320,4 +320,138 @@ test("downloadFile rejects files that exceed the byte limit", async () => {
     () => client.downloadFile("123", { maxBytes: 10 }),
     /exceeds the 10-byte limit/u,
   );
+});
+
+test("submitAssignmentFile uploads bytes and submits the uploaded file id", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new CanvasClient(config, {
+    fetch: async (input, init) => {
+      const url = String(input);
+      requests.push({ url, init });
+
+      if (url.includes("/assignments/assignment-123?")) {
+        return jsonResponse({
+          id: "assignment-123",
+          name: "Dev upload test",
+          submission_types: ["online_upload"],
+        });
+      }
+
+      if (url.endsWith("/assignments/assignment-123/submissions/self/files")) {
+        assert.equal(init?.method, "POST");
+        assert.equal(
+          (init.headers as Record<string, string> | undefined)?.Authorization,
+          "Bearer test-token",
+        );
+        const body = init.body as URLSearchParams;
+        assert.equal(body.get("name"), "submission.txt");
+        assert.equal(body.get("size"), "12");
+        assert.equal(body.get("content_type"), "text/plain");
+
+        return jsonResponse({
+          upload_url: "https://uploads.example.test/upload",
+          upload_params: {
+            key: "opaque-key",
+            policy: "opaque-policy",
+          },
+        });
+      }
+
+      if (url === "https://uploads.example.test/upload") {
+        assert.equal(init?.method, "POST");
+        assert.equal(
+          (init.headers as Record<string, string> | undefined)?.Authorization,
+          undefined,
+        );
+        const body = init.body as FormData;
+        assert.equal(body.get("key"), "opaque-key");
+        assert.equal(body.get("policy"), "opaque-policy");
+        assert.ok(body.get("file") instanceof Blob);
+
+        return new Response(null, {
+          status: 201,
+          headers: {
+            location:
+              "https://canvas.northwestern.edu/api/v1/files/999/create_success?uuid=abc",
+          },
+        });
+      }
+
+      if (url.endsWith("/files/999/create_success?uuid=abc")) {
+        assert.equal(init?.method, "GET");
+        assert.equal(
+          (init.headers as Record<string, string> | undefined)?.Authorization,
+          "Bearer test-token",
+        );
+
+        return jsonResponse({
+          id: "999",
+          filename: "submission.txt",
+          display_name: "submission.txt",
+          content_type: "text/plain",
+          size: 12,
+        });
+      }
+
+      if (url.endsWith("/assignments/assignment-123/submissions")) {
+        assert.equal(init?.method, "POST");
+        const body = init.body as URLSearchParams;
+        assert.equal(body.get("submission[submission_type]"), "online_upload");
+        assert.equal(body.get("submission[file_ids][]"), "999");
+        assert.equal(body.get("comment[text_comment]"), "timestamp test");
+
+        return jsonResponse({
+          assignment_id: "assignment-123",
+          user_id: "self",
+          submission_type: "online_upload",
+          submitted_at: "2026-04-25T20:30:00Z",
+          attempt: 1,
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+
+  const result = await client.submitAssignmentFile({
+    courseId: "course-123",
+    assignmentId: "assignment-123",
+    fileName: "submission.txt",
+    bytes: new TextEncoder().encode("hello canvas"),
+    contentType: "text/plain",
+    comment: "timestamp test",
+  });
+
+  assert.equal(requests.length, 5);
+  assert.equal(result.assignment.id, "assignment-123");
+  assert.equal(result.file.id, "999");
+  assert.equal(result.submission.submission_type, "online_upload");
+  assert.equal(result.submission.submitted_at, "2026-04-25T20:30:00Z");
+});
+
+test("submitAssignmentFile rejects assignments that do not accept file uploads", async () => {
+  let requestCount = 0;
+  const client = new CanvasClient(config, {
+    fetch: async () => {
+      requestCount += 1;
+      return jsonResponse({
+        id: "assignment-123",
+        name: "Text-only assignment",
+        submission_types: ["online_text_entry"],
+      });
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      client.submitAssignmentFile({
+        courseId: "course-123",
+        assignmentId: "assignment-123",
+        fileName: "submission.txt",
+        bytes: new TextEncoder().encode("hello canvas"),
+        contentType: "text/plain",
+      }),
+    /does not accept online_upload submissions/u,
+  );
+  assert.equal(requestCount, 1);
 });

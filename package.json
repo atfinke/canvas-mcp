@@ -14,6 +14,7 @@
     "test": "node --import tsx --test test/*.test.ts",
     "test:live": "node --import tsx scripts/live-smoke.ts",
     "test:live:mcp-files": "node --import tsx scripts/live-mcp-file-tools.ts",
+    "test:live:submit-file": "node --import tsx scripts/live-submit-assignment-file.ts",
     "report:classes": "node --import tsx scripts/report-upcoming-class-times.ts",
     "verify": "npm run check && npm run test && npm run build"
   },
