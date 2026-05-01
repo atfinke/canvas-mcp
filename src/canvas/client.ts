@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  refreshCanvasAccessToken,
+  verifyCanvasMobileDomain,
+  type CanvasOAuthUser,
+} from "../auth/oauth.js";
+import { writeStoredOAuthToken } from "../auth/tokenStore.js";
 import type { CanvasConfig } from "../config.js";
 import { USER_AGENT } from "../meta.js";
 import { buildCanvasPath, compareCanvasDates, parseNextLink, toCanvasUrl } from "./http.js";
@@ -127,6 +133,9 @@ const DEFAULT_MAX_DOWNLOAD_BYTES = 10_000_000;
 export class CanvasClient {
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
+  private apiToken: string;
+  private refreshToken?: string;
+  private refreshPromise?: Promise<void>;
 
   constructor(
     private readonly config: CanvasConfig,
@@ -134,6 +143,8 @@ export class CanvasClient {
   ) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
+    this.apiToken = config.apiToken;
+    this.refreshToken = config.refreshToken;
   }
 
   async getSelf(): Promise<CanvasUser> {
@@ -703,7 +714,7 @@ export class CanvasClient {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: accept,
-      Authorization: `Bearer ${this.config.apiToken}`,
+      Authorization: `Bearer ${this.apiToken}`,
       "User-Agent": USER_AGENT,
     };
 
@@ -715,6 +726,25 @@ export class CanvasClient {
   }
 
   private async sendRequest(
+    pathOrUrl: string,
+    options: {
+      accept?: string;
+      body?: URLSearchParams;
+      contentType?: string;
+      method?: string;
+    } = {},
+  ): Promise<Response> {
+    const response = await this.sendAuthenticatedRequest(pathOrUrl, options);
+
+    if (response.status !== 401 || !this.refreshToken) {
+      return response;
+    }
+
+    await this.refreshAccessToken();
+    return this.sendAuthenticatedRequest(pathOrUrl, options);
+  }
+
+  private async sendAuthenticatedRequest(
     pathOrUrl: string,
     options: {
       accept?: string;
@@ -741,6 +771,43 @@ export class CanvasClient {
       throw error;
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  private async refreshAccessToken(): Promise<void> {
+    if (!this.refreshToken) {
+      return;
+    }
+
+    this.refreshPromise ??= this.performRefreshAccessToken(this.refreshToken).finally(() => {
+      this.refreshPromise = undefined;
+    });
+
+    await this.refreshPromise;
+  }
+
+  private async performRefreshAccessToken(refreshToken: string): Promise<void> {
+    const mobileConfig = await verifyCanvasMobileDomain(this.config.domain, {
+      fetch: this.fetchImpl,
+      requestTimeoutMs: this.requestTimeoutMs,
+    });
+    const tokenResponse = await refreshCanvasAccessToken(mobileConfig, refreshToken, {
+      fetch: this.fetchImpl,
+      requestTimeoutMs: this.requestTimeoutMs,
+    });
+
+    this.apiToken = tokenResponse.access_token;
+    this.refreshToken = tokenResponse.refresh_token ?? refreshToken;
+
+    if (this.config.tokenPath) {
+      writeStoredOAuthToken(this.config.tokenPath, {
+        domain: this.config.domain,
+        baseUrl: mobileConfig.baseUrl,
+        accessToken: this.apiToken,
+        refreshToken: this.refreshToken,
+        canvasRegion: tokenResponse.canvas_region,
+        user: tokenResponse.user as CanvasOAuthUser | undefined,
+      });
     }
   }
 

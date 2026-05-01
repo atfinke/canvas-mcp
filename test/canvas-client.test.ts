@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { CanvasClient } from "../src/canvas/client.js";
@@ -9,6 +12,8 @@ const config: CanvasConfig = {
   domain: "canvas.northwestern.edu",
   baseUrl: "https://canvas.northwestern.edu/api/v1",
   apiToken: "test-token",
+  refreshToken: "test-refresh-token",
+  tokenPath: "/tmp/canvas-mcp-test-token.json",
 };
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
@@ -56,6 +61,93 @@ test("listCourses follows Canvas pagination links", async () => {
     (requests[0]?.init?.headers as Record<string, string> | undefined)?.["User-Agent"],
     USER_AGENT,
   );
+});
+
+test("CanvasClient refreshes OAuth tokens after an unauthorized response", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "canvas-mcp-client-"));
+  const tokenPath = join(directory, "token.json");
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  let coursesRequestCount = 0;
+
+  try {
+    const client = new CanvasClient(
+      {
+        ...config,
+        apiToken: "expired-access-token",
+        refreshToken: "stored-refresh-token",
+        tokenPath,
+      },
+      {
+        fetch: async (input, init) => {
+          const url = String(input);
+          requests.push({ url, init });
+
+          if (url.startsWith("https://sso.canvaslms.com/api/v1/mobile_verify.json")) {
+            return jsonResponse({
+              authorized: true,
+              result: 0,
+              client_id: "mobile-client-id",
+              client_secret: "mobile-client-secret",
+              base_url: "https://canvas.northwestern.edu/",
+            });
+          }
+
+          if (url === "https://canvas.northwestern.edu/login/oauth2/token?no_verifiers=1") {
+            assert.equal(
+              init?.body,
+              JSON.stringify({
+                client_id: "mobile-client-id",
+                client_secret: "mobile-client-secret",
+                refresh_token: "stored-refresh-token",
+                grant_type: "refresh_token",
+              }),
+            );
+
+            return jsonResponse({
+              access_token: "fresh-access-token",
+              refresh_token: "fresh-refresh-token",
+              token_type: "Bearer",
+              canvas_region: "us-east-1",
+              user: {
+                id: "83987",
+                name: "Andrew Finke",
+              },
+            });
+          }
+
+          if (url.startsWith("https://canvas.northwestern.edu/api/v1/courses")) {
+            coursesRequestCount += 1;
+
+            if (coursesRequestCount === 1) {
+              return new Response("Unauthorized", {
+                status: 401,
+                statusText: "Unauthorized",
+              });
+            }
+
+            return jsonResponse([{ id: "1", name: "Course 1" }]);
+          }
+
+          throw new Error(`Unexpected request: ${url}`);
+        },
+      },
+    );
+
+    const courses = await client.listCourses("active");
+
+    assert.equal(courses.length, 1);
+    assert.equal(coursesRequestCount, 2);
+    assert.equal(
+      (requests.at(-1)?.init?.headers as Record<string, string> | undefined)?.Authorization,
+      "Bearer fresh-access-token",
+    );
+
+    const storedToken = JSON.parse(readFileSync(tokenPath, "utf8")) as Record<string, unknown>;
+    assert.equal(storedToken.accessToken, "fresh-access-token");
+    assert.equal(storedToken.refreshToken, "fresh-refresh-token");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("getCourse requests syllabus_body and returns it when available", async () => {

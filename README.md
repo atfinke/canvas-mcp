@@ -72,7 +72,7 @@ Mostly read-only student-facing tools across identity, planning, coursework, con
 
 - Node.js 20+
 - A Canvas domain, for example `canvas.northwestern.edu`
-- A Canvas bearer token
+- A Canvas browser login
 
 ## Setup
 
@@ -82,33 +82,40 @@ Mostly read-only student-facing tools across identity, planning, coursework, con
    npm install
    ```
 
-2. Copy `.env.example` to `.env` and fill in:
+2. Copy `.env.example` to `.env` and fill in the domain:
 
    ```bash
    CANVAS_DOMAIN=canvas.northwestern.edu
-   CANVAS_API_TOKEN=your-token-here
    ```
 
-3. Start the server in development:
+3. Run the OAuth login helper:
+
+   ```bash
+   npm run auth:login -- canvas.northwestern.edu
+   ```
+
+   This opens the Canvas mobile OAuth login flow in your browser. After Microsoft/SAML/Duo finishes, paste the final `sso.canvaslms.com/canvas/login?code=...` URL back into the terminal. The helper exchanges the authorization code for Canvas OAuth tokens and stores them at `~/.canvas-mcp/tokens/<domain>.json` with user-only file permissions.
+
+4. Start the server in development:
 
    ```bash
    npm run dev
    ```
 
-4. Build production output:
+5. Build production output:
 
    ```bash
    npm run build
    npm start
    ```
 
-5. Run local quality checks:
+6. Run local quality checks:
 
    ```bash
    npm run verify
    ```
 
-6. Run a real Canvas smoke test against a live token:
+7. Run a real Canvas smoke test against a live login:
 
    ```bash
    npm run test:live
@@ -120,13 +127,13 @@ Mostly read-only student-facing tools across identity, planning, coursework, con
    CANVAS_SMOKE_PRIMARY_COURSE_ID=235497
    ```
 
-7. Run a live MCP smoke for file download and text extraction:
+8. Run a live MCP smoke for file download and text extraction:
 
    ```bash
    npm run test:live:mcp-files
    ```
 
-8. Run a one-off live local-file assignment submission test:
+9. Run a one-off live local-file assignment submission test:
 
    ```bash
    npm run test:live:submit-file -- <course-id> <assignment-id>
@@ -164,6 +171,9 @@ To publish version `0.1.0`, create and push tag `v0.1.0`.
 ## Notes
 
 - `CANVAS_DOMAIN` should be just the host, not `https://` and not `/api/v1`.
+- `npm run auth:login` mirrors Canvas Student's OAuth flow: it verifies the institution through `sso.canvaslms.com`, sends you through the normal Canvas/Microsoft/SAML/Duo browser login, exchanges the returned authorization code at `/login/oauth2/token`, and stores access/refresh tokens locally.
+- The server reads OAuth tokens from `~/.canvas-mcp/tokens/<domain>.json` or `CANVAS_OAUTH_TOKEN_PATH`.
+- If a request returns `401`, the client refreshes the access token with the stored refresh token and retries once.
 - The server does a startup auth check against `GET /api/v1/users/self?include[]=uuid`.
 - The client uses a request timeout and normalizes a few Canvas-specific edge cases such as disabled course features and explicit empty filters.
 - `get_course` requests `include[]=syllabus_body`, so course responses include `syllabus_body` when the Canvas course has syllabus content.
@@ -171,10 +181,10 @@ To publish version `0.1.0`, create and push tag `v0.1.0`.
 - `download_file` saves the file to a local temporary directory and returns the absolute path, checksum, and metadata.
 - `read_text_file` supports text-like formats plus PDFs. Other binary formats continue to work through `get_file` and `download_file`.
 - `submit_assignment_file` uploads and submits one local file to assignments that accept `online_upload`; it requires `confirmSubmission=true`.
-- `manifest.json` defines the MCPB install flow and prompts users for `CANVAS_DOMAIN` and `CANVAS_API_TOKEN` during desktop extension setup.
+- `manifest.json` defines the MCPB install flow and prompts users for `CANVAS_DOMAIN`, plus an optional OAuth token store path.
 - Some Canvas course features are optional. For list-style tools such as pages, discussions, and quizzes, disabled course features are normalized to empty lists instead of hard failures.
 - `npm run test:live` probes across active courses so course-specific permissions or disabled features do not create false negatives for unrelated endpoints. `CANVAS_SMOKE_PRIMARY_COURSE_ID` lets you pin the primary course used for the course-scoped checks.
-- If you are using an OAuth token captured from the iOS app, it may expire. For a more durable setup, switch to a stable Canvas-issued token or add refresh handling later.
+- If you are using an OAuth token captured from the iOS app, replace it by running `npm run auth:login`; captured access tokens can expire and are no longer needed for normal setup.
 
 ## Example MCP Config
 
@@ -185,8 +195,7 @@ To publish version `0.1.0`, create and push tag `v0.1.0`.
       "command": "npm",
       "args": ["run", "start", "--prefix", "/absolute/path/to/canvas-mcp"],
       "env": {
-        "CANVAS_DOMAIN": "canvas.northwestern.edu",
-        "CANVAS_API_TOKEN": "your-token-here"
+        "CANVAS_DOMAIN": "canvas.northwestern.edu"
       }
     }
   }

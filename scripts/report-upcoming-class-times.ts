@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     cwd: process.cwd(),
     env: {
       CANVAS_DOMAIN: process.env.CANVAS_DOMAIN ?? "",
-      CANVAS_API_TOKEN: process.env.CANVAS_API_TOKEN ?? "",
+      CANVAS_OAUTH_TOKEN_PATH: process.env.CANVAS_OAUTH_TOKEN_PATH ?? "",
     },
     stderr: "pipe",
   });

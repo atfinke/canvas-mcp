@@ -4,6 +4,9 @@ dist
 .env
 .env.*
 !.env.example
+.canvas-mcp/
+canvas-mcp-token*.json
+canvas-mcp-oauth*.json
 npm-debug.log*
 .mcpb-build
 releases/*.mcpb

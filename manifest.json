@@ -4,7 +4,7 @@
   "display_name": "Canvas MCP",
   "version": "0.1.0",
   "description": "Canvas MCP server for courses, assignments, planning, content, collaboration, and confirmed local-file submissions.",
-  "long_description": "Canvas MCP is a local-first Model Context Protocol server for Canvas. It connects to a user-provided Canvas domain and bearer token, then exposes mostly read-only student-focused tools for courses, assignments, planner items, announcements, modules, files, discussions, quizzes, groups, conversations, and schedules. It also includes an explicitly confirmed local-file assignment submission tool for assignments that accept online_upload submissions.",
+  "long_description": "Canvas MCP is a local-first Model Context Protocol server for Canvas. It connects to a user-provided Canvas domain and OAuth token store created by the browser login helper, then exposes mostly read-only student-focused tools for courses, assignments, planner items, announcements, modules, files, discussions, quizzes, groups, conversations, and schedules. It also includes an explicitly confirmed local-file assignment submission tool for assignments that accept online_upload submissions.",
   "author": {
     "name": "Andrew Finke"
   },
@@ -26,7 +26,7 @@
       ],
       "env": {
         "CANVAS_DOMAIN": "${user_config.canvas_domain}",
-        "CANVAS_API_TOKEN": "${user_config.canvas_api_token}"
+        "CANVAS_OAUTH_TOKEN_PATH": "${user_config.canvas_oauth_token_path}"
       }
     }
   },
@@ -48,11 +48,11 @@
       "description": "Canvas host name, for example canvas.northwestern.edu.",
       "required": true
     },
-    "canvas_api_token": {
+    "canvas_oauth_token_path": {
       "type": "string",
-      "title": "Canvas API token",
-      "description": "Canvas bearer token used for API requests.",
-      "required": true,
+      "title": "OAuth token store path (optional)",
+      "description": "Optional path to a token store created by npm run auth:login. Defaults to ~/.canvas-mcp/tokens/<domain>.json.",
+      "required": false,
       "sensitive": true
     }
   }

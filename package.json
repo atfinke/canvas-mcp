@@ -6,6 +6,7 @@
   "description": "Minimal Canvas MCP server for validating Canvas credentials and core read-only workflows.",
   "scripts": {
     "build": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc -p tsconfig.json",
+    "auth:login": "node --import tsx scripts/auth-login.ts",
     "check": "tsc -p tsconfig.typecheck.json",
     "dev": "tsx src/index.ts",
     "mcpb:pack": "node --import tsx scripts/pack-mcpb.ts",
